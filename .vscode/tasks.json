@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run backend (FastAPI)",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$envFile = Join-Path '${workspaceFolder}' '.env'; Get-Content $envFile | Where-Object { $_ -match '^\\s*[^#][^=]*=' } | ForEach-Object { $pair = $_ -split '=', 2; $name = $pair[0].Trim(); $value = $pair[1].Trim().Trim([char]34).Trim([char]39); [Environment]::SetEnvironmentVariable($name, $value, 'Process') }; Set-Location (Join-Path '${workspaceFolder}' 'backend'); python -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*",
+          "endsPattern": "Uvicorn running on http://127\\.0\\.0\\.1:8000"
+        }
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
+    }
+  ]
+}
