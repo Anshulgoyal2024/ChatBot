@@ -2,31 +2,59 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Run backend (FastAPI)",
+      "label": "Backend: FastAPI (local)",
       "type": "process",
-      "command": "powershell.exe",
+      "command": "${workspaceFolder}\\backend\\Scripts\\python.exe",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "$envFile = Join-Path '${workspaceFolder}' '.env'; Get-Content $envFile | Where-Object { $_ -match '^\\s*[^#][^=]*=' } | ForEach-Object { $pair = $_ -split '=', 2; $name = $pair[0].Trim(); $value = $pair[1].Trim().Trim([char]34).Trim([char]39); [Environment]::SetEnvironmentVariable($name, $value, 'Process') }; Set-Location (Join-Path '${workspaceFolder}' 'backend'); python -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--reload",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
       ],
       "options": {
-        "cwd": "${workspaceFolder}"
+        "cwd": "${workspaceFolder}\\backend"
       },
       "isBackground": true,
       "problemMatcher": {
-        "owner": "custom",
+        "owner": "local-backend",
         "pattern": { "regexp": "^$" },
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".*",
           "endsPattern": "Uvicorn running on http://127\\.0\\.0\\.1:8000"
         }
+      }
+    },
+    {
+      "label": "Frontend: Vite (local)",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "dev"],
+      "options": {
+        "cwd": "${workspaceFolder}\\frontend"
       },
-      "runOptions": {
-        "runOn": "folderOpen"
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "local-frontend",
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*",
+          "endsPattern": "Local:\\s+http://localhost:3001/"
+        }
+      }
+    },
+    {
+      "label": "Run local app",
+      "dependsOn": ["Backend: FastAPI (local)", "Frontend: Vite (local)"],
+      "dependsOrder": "parallel",
+      "group": {
+        "kind": "build",
+        "isDefault": false
       }
     }
   ]

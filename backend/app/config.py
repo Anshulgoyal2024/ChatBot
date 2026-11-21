@@ -12,7 +12,7 @@ DEFAULT_ORIGINS = "http://localhost:3000,http://localhost:3001"
 
 # Read the repository-level .env for local development; hosted environments can
 # continue to provide settings through their platform environment variables.
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(Path(__file__).resolve().parents[2] / ".env", encoding="utf-8-sig")
 
 
 def _split_csv(value: str) -> tuple:

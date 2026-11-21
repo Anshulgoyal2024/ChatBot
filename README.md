@@ -1,83 +1,66 @@
-# LLM Chatbot with Key Failover and Response Caching
+# Local Lyftr chatbot
 
-React + FastAPI + SQLite chatbot. LiteLLM provides the key pool with automatic failover and the response cache. Every reply shows its source, model, latency and per-request token usage.
+React + FastAPI + SQLite, launched from VS Code. The frontend runs at `http://localhost:3001`, the backend at `http://127.0.0.1:8000`, and SQLite data stays in `backend/data/app.db`.
 
-## 1. Live URLs
+The application and database run on your machine. Chat completions are sent to the configured OpenAI API, which requires an internet connection and a valid API key.
 
-- Frontend: _add the deployed frontend URL before submitting_
-- Backend: _add the deployed backend URL before submitting_ (`GET /health` should return `{"status":"ok",...}`)
-- Repository: _add the public GitHub URL_
-- Demo video: _add a public 2–3 minute demo video link_
+## 1. Set up in VS Code (Windows)
 
-Set `ENABLE_FAILURE_SIMULATION=true` and `ALLOWED_ORIGINS=<frontend URL>` on the deployed backend, and build the frontend with `VITE_API_BASE_URL=<backend URL>`.
+Open this repository folder in VS Code and use its integrated PowerShell terminal.
 
-## 2. Run locally: with Docker and without
+One-time backend setup:
 
-### With Docker
-
-```bash
-cp .env.example .env     # put at least 2 real keys in LLM_API_KEYS
-make up                  # docker compose up --build -d
-```
-
-- Backend: http://localhost:8000 (`/health`, `/chat`, `/sessions/{id}/messages`)
-- Frontend: http://localhost:3000 by default (`FRONTEND_PORT=3001` if that port is occupied)
-- SQLite lives on the named volume `sqlite_data`, mounted at `/data` (`DATABASE_URL=sqlite:////data/app.db`), so history survives restarts.
-- `FRONTEND_PORT` defaults to `3000` for the assignment contract; set it to `3001` if another local service already uses port 3000.
-- `make down` stops the stack. `make test` runs the backend tests.
-
-For a Render Docker deployment, set `DATABASE_URL=sqlite:////data/app.db` and mount a persistent disk at `/data` if session history must survive deploys. The image also makes `/srv/data` writable for deployments that currently use the relative `sqlite:///./data/app.db` URL.
-The backend image binds Uvicorn to Render's `PORT` environment variable (default `10000` there, `8000` locally) on `0.0.0.0`.
-
-### Without Docker
-
-```bash
-# backend (Python 3.11+)
+```powershell
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export LLM_API_KEYS="key-one,key-two" LLM_MODEL="gemini/gemini-3.6-flash" \
-       DATABASE_URL="sqlite:///./data/app.db" ALLOWED_ORIGINS="http://localhost:3001" \
-       ENABLE_FAILURE_SIMULATION=true
-uvicorn app.main:app --port 8000
+if (-not (Test-Path .\Scripts\python.exe)) { py -3 -m venv . }
+.\Scripts\python.exe -m pip install -r requirements.txt
+cd ..\frontend
+npm ci
+cd ..
+```
 
-# frontend (Node 20+), in a second terminal. Vite proxies API calls to port 8000.
+Keep `LLM_API_KEYS` in the repository-root `.env` file. Put the two provider keys there as a comma-separated value if you need the two-key failover demo. Do not commit or share that file. The frontend has no remote API URL setting; it always uses the local backend proxy.
+
+Start both local services from VS Code: press `Ctrl+Shift+P`, choose **Tasks: Run Task**, then choose **Run local app**. VS Code opens one integrated terminal for FastAPI and one for Vite. Open `http://localhost:3001`; `/health` is available at `http://127.0.0.1:8000/health`.
+
+You can start them manually in two VS Code terminals instead:
+
+```powershell
+# Terminal 1, from the repository root
+cd backend
+.\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+```powershell
+# Terminal 2, from the repository root
 cd frontend
-npm install
-npm run dev                                              # http://localhost:3001
+npm run dev
 ```
 
-### Tests
+## 2. Local configuration
 
-```bash
-make test        # or: cd backend && pytest -v
-```
-
-The tests mock the provider (LiteLLM `mock_response`) and use a temporary SQLite file. The real LiteLLM cache layer stays active, so cache hits and misses are genuinely exercised.
-
-### Environment variables
-
-| Variable | Meaning |
+| Variable | Purpose |
 | --- | --- |
-| `LLM_API_KEYS` | Comma-separated key pool. Ids are `key_1`, `key_2`, ... in this order. |
-| `LLM_MODEL` | LiteLLM model name (default `gemini/gemini-3.6-flash`). |
-| `DATABASE_URL` | SQLite location, e.g. `sqlite:////data/app.db`. Parent folders and tables are created on startup. |
-| `ALLOWED_ORIGINS` | Comma-separated CORS origins. |
-| `ENABLE_FAILURE_SIMULATION` | `true` enables the `X-Simulate-Failure` hook. |
-| `VITE_API_BASE_URL` | Optional API URL override. Leave blank to use the same-origin frontend proxy. |
-| `LLM_REQUEST_TIMEOUT` | Optional. Per-key provider timeout in seconds (default 30). |
-| `DEFAULT_SYSTEM_PROMPT` | Optional. Used when a session has no system prompt. |
-| `FRONTEND_PORT` | Host port for the Docker frontend (default `3000`). |
+| `LLM_API_KEYS` | Comma-separated OpenAI API keys; IDs are `key_1`, `key_2`, and so on. |
+| `LLM_MODEL` | LiteLLM model name; default is `openai/gpt-4o-mini`. |
+| `DATABASE_URL` | Local SQLite path; use `sqlite:///./data/app.db` for development. |
+| `ALLOWED_ORIGINS` | Local browser origin, normally `http://localhost:3001`. |
+| `ENABLE_FAILURE_SIMULATION` | Set to `true` to use the failover demo field. |
+| `LLM_REQUEST_TIMEOUT` | Provider timeout in seconds. |
 
+The browser only calls its own local origin. Vite forwards `/chat`, `/health`, and `/sessions` to `127.0.0.1:8000`. The Vite and Docker port bindings use loopback addresses, so the app is not exposed to your network.
+
+Run the backend suite with `cd backend; .\Scripts\python.exe -m pytest -v` when you want to check it.
 ## 3. Design decisions: key fallback, caching, SQLite session storage
 
-**Key fallback.** `LLM_API_KEYS` becomes an ordered pool. For each request the gateway tries `key_1`, then `key_2`, and so on, calling `litellm.acompletion` with one explicit `api_key` and `num_retries=0`, so a failing key is abandoned immediately instead of being retried. Any provider failure (429, quota, 5xx, timeout, connection error, empty completion) moves to the next key and increments `fallback_attempts`. When every key fails the API returns `503 {"detail":"all providers unavailable"}`. Only exception class names are logged, never keys or stack traces, and nothing is written to SQLite for a failed request.
+**Key fallback.** `LLM_API_KEYS` becomes an ordered pool. For each request the gateway tries `key_1`, then `key_2`, and so on, calling `litellm.acompletion` with one explicit `api_key` and `num_retries=0`, so a failing key is abandoned immediately instead of being retried. Any provider failure (429, quota, 5xx, timeout, connection error, empty completion) moves to the next key and increments `fallback_attempts`. If every configured key is rate-limited, the API returns `429`; other exhausted provider failures return `503`. Only exception class names are logged, never keys or stack traces, and nothing is written to SQLite for a failed request.
+Provider keys in the same organization or project may share rate and spend limits; adding key IDs does not increase those limits.
 
 **Failure simulation.** With `ENABLE_FAILURE_SIMULATION=true`, `X-Simulate-Failure` (`key_1=429`, `key_1=429,key_2=500`, `*=429`; statuses 429/500/502/503) marks keys as failed for that single request. The provider is not called for a simulated key. A specific key id wins over `*`. A simulated request also skips the cache read so the failover path is always demonstrable, even for a message that was answered before.
 
 **Caching.** LiteLLM's built-in in-memory cache (`Cache(type="local")`) is enabled globally. By default LiteLLM includes `api_key` and other call parameters in the cache key, which would make the same prompt miss whenever a different key answers. `ModelMessagesCache` overrides `get_cache_key` so the key is a SHA-256 of **model + the full message list** (system prompt + history + new message). The same first message with the same system prompt in a new session is therefore a hit, while a different message, history or system prompt is always a miss. On a hit the reply and token counts come from the stored response, `key_id` is `null` and `fallback_attempts` is `0`. The cache layer is warmed at startup so the first hit is not slowed by lazy imports.
 
-**SQLite session storage.** Python's built-in `sqlite3` only. `messages` follows the specified schema (plus an index on `session_id, id`); a small `sessions` table stores the per-session system prompt. The client sends only the new message; the backend rebuilds `system + stored history + new message` for every call. The user and assistant rows are written in one transaction after a successful answer, so a 422 or 503 leaves no trace. The system prompt is never returned by the history endpoint.
+**SQLite session storage.** Python's built-in `sqlite3` only. `messages` follows the specified schema (plus an index on `session_id, id`); a small `sessions` table stores the per-session system prompt. The client sends only the new message; the backend rebuilds `system + stored history + new message` for every call. The user and assistant rows are written in one transaction after a successful answer, so a validation or provider failure leaves no trace. The system prompt is never returned by the history endpoint.
 
 **Errors.** Handlers for validation errors, HTTP exceptions and unexpected exceptions guarantee that every error is JSON with a `detail` key, never HTML or a stack trace.
 

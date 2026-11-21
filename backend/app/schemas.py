@@ -12,7 +12,8 @@ class ChatRequest(BaseModel):
     @field_validator("session_id")
     @classmethod
     def _session_id_not_blank(cls, value: str) -> str:
-        if not value.strip():
+        value = value.strip()
+        if not value:
             raise ValueError("session_id must not be blank")
         return value
 

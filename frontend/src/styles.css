@@ -76,6 +76,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus
 .sidebar .status-pill { border-color: #ffffff1b; color: #cbd4e0; background: #ffffff0b; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #e0a640; }
 .status-pill.online .status-dot { background: #35bf8b; box-shadow: 0 0 0 3px #35bf8b20; }
+.status-pill.setup .status-dot { background: #e6a33b; box-shadow: 0 0 0 3px #e6a33b20; }
 .status-pill.offline .status-dot { background: #e27070; }
 .session-card { display: grid; gap: 5px; padding: 11px 12px; border: 1px solid #ffffff17; border-radius: 9px; background: #ffffff08; }
 .session-label { color: #8e99b0; font-size: 8px; font-weight: 700; letter-spacing: 1px; }

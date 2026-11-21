@@ -23,6 +23,14 @@ litellm.set_verbose = False
 class AllProvidersUnavailable(Exception):
     """Raised when every key in the pool failed (real or simulated)."""
 
+    def __init__(self, failures=None):
+        super().__init__()
+        self.failures = failures or []
+
+
+class AllProvidersRateLimited(AllProvidersUnavailable):
+    """Raised when every configured provider key is rate-limited."""
+
 
 class ModelMessagesCache(Cache):
     """LiteLLM cache whose key depends only on `model` + the full message list.
@@ -109,11 +117,14 @@ class LLMGateway:
     async def complete(self, messages: List[dict], simulate: Optional[Dict[str, int]] = None) -> GatewayResult:
         simulate = simulate if (self.settings.enable_failure_simulation and simulate) else {}
         attempts = 0
+        failures = []
+        failure_details = []
         for index, api_key in enumerate(self.keys, start=1):
             key_id = f"key_{index}"
             simulated_status = simulate.get(key_id, simulate.get("*"))
             if simulated_status is not None:
                 logger.warning("simulated failure key_id=%s status=%s", key_id, simulated_status)
+                failure_details.append(f"{key_id}: simulated HTTP {simulated_status}")
                 attempts += 1
                 continue
             call_kwargs = dict(
@@ -135,6 +146,8 @@ class LLMGateway:
             except Exception as exc:
                 # Log the exception type only: never the key, never a stack trace.
                 logger.warning("provider failure key_id=%s error=%s", key_id, type(exc).__name__)
+                failures.append(exc)
+                failure_details.append(f"{key_id}: {type(exc).__name__}")
                 attempts += 1
                 continue
 
@@ -150,4 +163,8 @@ class LLMGateway:
                 key_id=None if cache_hit else key_id,
                 fallback_attempts=0 if cache_hit else attempts,
             )
-        raise AllProvidersUnavailable()
+        if failures and len(failures) == len(self.keys) and all(
+            isinstance(exc, litellm.RateLimitError) for exc in failures
+        ):
+            raise AllProvidersRateLimited(failure_details)
+        raise AllProvidersUnavailable(failure_details)

@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 
 from .config import Settings
 from .database import Database
-from .llm_gateway import AllProvidersUnavailable, LLMGateway, parse_failure_header
+from .llm_gateway import AllProvidersRateLimited, AllProvidersUnavailable, LLMGateway, parse_failure_header
 from .schemas import ChatRequest, ChatResponse, HealthResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -51,6 +51,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Provider-Failures"],
     )
 
     @app.exception_handler(RequestValidationError)
@@ -94,8 +95,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
         try:
             result = await gateway.complete(messages, simulate)
-        except AllProvidersUnavailable:
-            raise HTTPException(status_code=503, detail="all providers unavailable")
+        except AllProvidersRateLimited as exc:
+            headers = {"X-Provider-Failures": "; ".join(exc.failures)} if exc.failures else None
+            raise HTTPException(status_code=429, detail="provider rate or usage limit reached", headers=headers)
+        except AllProvidersUnavailable as exc:
+            headers = {"X-Provider-Failures": "; ".join(exc.failures)} if exc.failures else None
+            raise HTTPException(status_code=503, detail="all providers unavailable", headers=headers)
 
         latency_ms = max(1, int(round((time.perf_counter() - started) * 1000)))
         metadata = {

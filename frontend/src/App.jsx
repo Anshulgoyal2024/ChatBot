@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-// Same-origin by default: Vite proxies in development and Nginx does so in Docker.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+// All browser API traffic stays on this local origin; Vite/Nginx proxy it to FastAPI.
 
 const SUGGESTIONS = [
   "Help me plan a focused workday",
@@ -39,11 +38,18 @@ async function readError(response) {
   } catch {
     detail = null;
   }
+  const providerFailures = response.headers.get("X-Provider-Failures");
+  const providerSummary = providerFailures
+    ? providerFailures.split("; ").map((failure, index) => `API ${index + 1} (${failure})`).join(" · ")
+    : null;
   if (response.status === 422) {
     return `Your message could not be sent. ${describeValidationDetail(detail)}`;
   }
+  if (response.status === 429) {
+    return `No AI answer was returned because the provider rate or usage limit was reached.${providerSummary ? ` ${providerSummary}.` : " Check API usage, billing, and limits before retrying."}`;
+  }
   if (response.status === 503) {
-    return "The AI providers are unavailable right now. Your message is safe here; try again shortly.";
+    return `No AI answer was returned. Your message is still shown above.${providerSummary ? ` Provider results: ${providerSummary}.` : " Check the backend and retry."}`;
   }
   if (typeof detail === "string" && detail) {
     return `The server returned an error (${response.status}): ${detail}`;
@@ -52,7 +58,13 @@ async function readError(response) {
 }
 
 function StatusDot({ status }) {
-  const label = status === "online" ? "Connected" : status === "checking" ? "Connecting" : "Offline";
+  const label = status === "online"
+    ? "Backend online"
+    : status === "setup"
+      ? "API key needed"
+      : status === "checking"
+        ? "Connecting"
+        : "Offline";
   return (
     <span className={`status-pill ${status}`} aria-live="polite">
       <span className="status-dot" />
@@ -77,12 +89,15 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${API_BASE}/health`, { signal: controller.signal })
+    fetch("/health", { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error("Backend health check failed");
         return response.json();
       })
-      .then((health) => setApiStatus(health.status === "ok" ? "online" : "offline"))
+      .then((health) => {
+        if (health.status !== "ok") setApiStatus("offline");
+        else setApiStatus(health.keys_configured > 0 ? "online" : "setup");
+      })
       .catch(() => {
         if (!controller.signal.aborted) setApiStatus("offline");
       });
@@ -138,7 +153,7 @@ export default function App() {
     if (systemPrompt.trim()) body.system_prompt = systemPrompt.trim();
 
     try {
-      const response = await fetch(`${API_BASE}/chat`, {
+      const response = await fetch("/chat", {
         method: "POST",
         headers,
         body: JSON.stringify(body),
@@ -167,7 +182,7 @@ export default function App() {
         {
           id: nextId(),
           role: "error",
-          content: `Could not reach the server${API_BASE ? ` at ${API_BASE}` : ""}. Check that the backend is running, then retry.`,
+          content: "Could not reach the local backend at 127.0.0.1:8000. Start the backend in VS Code, then retry.",
           retryFor: userId,
         },
       ]);
