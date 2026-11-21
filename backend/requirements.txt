@@ -1,0 +1,10 @@
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.4
+litellm==1.110.2
+# LiteLLM's cache layer lazily imports these proxy dependencies; the slim install does not ship them.
+orjson==3.13.0
+soundfile==0.14.0
+# test tooling (used by `make test`)
+pytest==9.2.0
+httpx==0.28.1
