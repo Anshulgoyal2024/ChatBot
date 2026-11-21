@@ -14,8 +14,8 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
     DATABASE_URL=sqlite:////data/app.db
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /data \
-    && chown appuser:appuser /data
+    && mkdir -p /data /srv/data \
+    && chown appuser:appuser /data /srv/data
 WORKDIR /srv
 COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
